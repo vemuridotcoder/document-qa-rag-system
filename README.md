@@ -1,27 +1,89 @@
 # Intelligent Document Q&A System
 
-> Semantic Q&A over any document — Sentence-BERT embeddings, ChromaDB vector store,
-> Llama 3.1 via Groq, response caching, query logging, and rate limiting.
+**Production RAG pipeline** — indexes any PDF/TXT/MD document using dense vector embeddings, retrieves semantically relevant content, and generates grounded answers using Llama 3.1 with full hallucination prevention, response caching, rate limiting, and query analytics.
 
-[![CI](https://github.com/YOUR_USERNAME/doc-qa-system/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/doc-qa-system/actions)
-![Python](https://img.shields.io/badge/Python-3.11-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green)
+[![CI](https://github.com/vemuridotcoder/doc-qa-system/actions/workflows/ci.yml/badge.svg)](https://github.com/vemuridotcoder/doc-qa-system/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-0.5-orange)
-![Docker](https://img.shields.io/badge/Docker-ready-blue)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 
 ---
 
-## What this does
+## What it does
 
-Indexes any PDF/TXT/MD document using dense vector embeddings, retrieves semantically relevant chunks for a user question, and generates a grounded answer using Llama 3.1 — with three-layer hallucination prevention, SQLite response caching, per-IP rate limiting, and full query logging.
-
-**Key differentiator:** retrieval quality is evaluated independently from generation quality using Hit Rate @K and MRR — most RAG tutorials skip this and cannot diagnose where failures occur.
+| Feature | Detail |
+|---|---|
+| **Semantic retrieval** | Sentence-BERT (all-MiniLM-L6-v2) + ChromaDB cosine similarity |
+| **Hallucination prevention** | 3-layer: system prompt constraint + temperature=0.1 + confidence routing |
+| **Retrieval evaluation** | Hit Rate @3 and MRR measured independently from generation quality |
+| **Chunk optimisation** | Systematic experiment across 128 / 256 / 512 / 1024 token sizes |
+| **Response caching** | SQLite cache — TTL=24h, auto-invalidated on re-index |
+| **Rate limiting** | 30 req/min per IP via slowapi |
+| **Query analytics** | SQLite log — confidence distribution, response times, SQL window functions |
+| **Deployment** | FastAPI + Docker — /ingest, /ask, /ask/batch, /store, /analytics, /health |
 
 ---
 
-## Stack
+## Tech stack
 
-`Python 3.11` · `Sentence-Transformers` · `ChromaDB` · `Groq (Llama 3.1)` · `FastAPI` · `Pydantic` · `SQLite` · `slowapi` · `Docker` · `GitHub Actions`
+`Python 3.11` · `Sentence-Transformers` · `ChromaDB` · `Groq (Llama 3.1)` · `FastAPI` · `Pydantic` · `SQLite` · `slowapi` · `Docker` · `GitHub Actions` · `pytest`
+
+---
+
+## Quick start
+
+```bash
+git clone https://github.com/vemuridotcoder/doc-qa-system.git
+cd doc-qa-system
+pip install -r requirements.txt
+
+# Get free Groq API key → https://console.groq.com
+export GROQ_API_KEY=your_key_here
+# OR run fully local: export USE_OLLAMA=true  (requires ollama.ai + ollama pull llama3.2)
+
+uvicorn api.main:app --port 8001
+```
+
+```bash
+# Docker
+docker build -t doc-qa .
+docker run -e GROQ_API_KEY=your_key -p 8001:8001 doc-qa
+```
+
+```bash
+# Ingest a document
+curl -X POST http://localhost:8001/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"file_path": "data/raw/your_document.pdf", "reset": true}'
+
+# Ask a question
+curl -X POST http://localhost:8001/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the total education budget?"}'
+
+# View analytics
+curl http://localhost:8001/analytics
+```
+
+**Response:**
+```json
+{
+  "question": "What is the total education budget?",
+  "answer": "According to Source 1, the total education budget is INR 1,48,000 crore.",
+  "retrieval_confidence": "high",
+  "sources": [
+    {
+      "text_preview": "The Union Budget allocates INR 1,48,000 crore...",
+      "source_file": "budget_2024.pdf",
+      "relevance_distance": 0.18,
+      "confidence": "high"
+    }
+  ],
+  "generation_skipped": false,
+  "warning": null
+}
+```
 
 ---
 
@@ -30,74 +92,73 @@ Indexes any PDF/TXT/MD document using dense vector embeddings, retrieves semanti
 ```
 doc-qa-system/
 ├── src/
-│   ├── ingestion.py        Document loader + sentence-aware chunker
-│   ├── embeddings.py       Sentence-BERT embedding model wrapper
-│   ├── vectorstore.py      ChromaDB interface with cosine similarity
-│   ├── generator.py        LLM generation — Groq + Ollama backends
-│   ├── evaluate.py         Hit Rate @K and MRR retrieval evaluator
-│   ├── chunk_experiment.py Systematic chunk size experiment (128/256/512/1024)
-│   ├── cache.py            SQLite response cache with TTL and invalidation
-│   └── query_logger.py     SQLite query log with SQL analytics queries
+│   ├── ingestion.py         Document loader + sentence-aware chunker
+│   ├── embeddings.py        Sentence-BERT wrapper (all-MiniLM-L6-v2)
+│   ├── vectorstore.py       ChromaDB cosine similarity interface
+│   ├── generator.py         Groq + Ollama backends — hallucination constrained
+│   ├── evaluate.py          Hit Rate @K and MRR retrieval evaluator
+│   ├── chunk_experiment.py  Chunk size experiment (128/256/512/1024 tokens)
+│   ├── cache.py             SQLite response cache with TTL + invalidation
+│   └── query_logger.py      SQLite query log with SQL analytics
 ├── api/
-│   ├── main.py             FastAPI: /health /ingest /ask /ask/batch /store /analytics
-│   └── schemas.py          Pydantic validation
+│   ├── main.py              FastAPI application (7 endpoints)
+│   └── schemas.py           Pydantic validation
 ├── configs/
-│   └── config.yaml         All decisions documented inline
+│   └── config.yaml          All decisions documented inline
 ├── evaluation/
-│   └── test_questions.json Add domain-specific questions here
+│   └── test_questions.json  Add domain-specific questions here
 ├── tests/
-│   └── test_api.py         11 endpoint tests
+│   └── test_api.py          11 endpoint tests
 ├── .github/workflows/
-│   └── ci.yml              Lint → config validation → cache tests → pytest
+│   └── ci.yml               Lint → config validation → cache tests → pytest
 ├── Dockerfile
-└── requirements.txt        Pinned versions
+└── requirements.txt
 ```
 
 ---
 
-## Key technical decisions
+## Key decisions
 
-### 1 — Chunk size: 512 tokens with 50-token overlap
+### Chunk size: 512 tokens, 50-token overlap
 
 | Chunk size | Problem |
 |---|---|
-| 128 tokens | Answers split across chunks. Retrieval returns incomplete context. |
+| 128 tokens | Answers split across chunks — incomplete context |
 | **512 tokens** | **Balanced — complete thoughts, precise retrieval** |
-| 1024 tokens | Too many topics per chunk. LLM confused by irrelevant context. |
+| 1024 tokens | Too many topics per chunk — LLM confused by noise |
 
-Overlap prevents boundary misses: answers spanning two consecutive chunks appear in both.
-Run `python src/chunk_experiment.py --doc your_file.txt` to validate this for your document type.
+**50-token overlap** prevents boundary misses — answers spanning two chunks appear in both.
 
-### 2 — Sentence-BERT over TF-IDF
+Run `python src/chunk_experiment.py --doc your_file.txt` to validate for your document type.
+
+### Sentence-BERT over TF-IDF
 
 TF-IDF is sparse — "education expenditure" and "school funding" share zero keywords, similarity = 0.
-`all-MiniLM-L6-v2` produces 384-dimensional dense vectors trained on 1B+ sentence pairs.
 
-`cosine("education expenditure", "school funding allocation") ≈ 0.87`
-`cosine("education expenditure", "defense procurement") ≈ 0.12`
+`all-MiniLM-L6-v2` encodes semantic meaning:
+- `cosine("education expenditure", "school funding allocation") ≈ 0.87` ✓
+- `cosine("education expenditure", "defense procurement") ≈ 0.12` ✓
 
-**Why cosine similarity, not L2:** `all-MiniLM-L6-v2` outputs unit-normalized vectors.
-For normalized vectors, cosine similarity = dot product — faster and correct.
-L2 distance is distorted by vector magnitude, inappropriate here.
-ChromaDB: `"hnsw:space": "cosine"`.
+**Why cosine, not L2:** Model outputs unit-normalized vectors. Cosine = dot product for normalized vectors — faster and correct. L2 is distorted by magnitude.
 
-### 3 — Three-layer hallucination prevention
+### Three-layer hallucination prevention
 
 | Layer | Mechanism |
 |---|---|
-| System prompt | Explicitly forbids using knowledge beyond retrieved context |
-| Temperature = 0.1 | Reduces creative generation, keeps model grounded |
-| Confidence routing | Distance > 0.55 → skip LLM entirely, return deterministic "cannot find" |
+| System prompt | Explicitly forbids LLM from using knowledge beyond retrieved context |
+| Temperature = 0.1 | Suppresses creative generation — model stays grounded in retrieved text |
+| Confidence routing | Distance > 0.55 → skip LLM entirely → deterministic "cannot find" response |
 
 Without layer 3, the LLM fills retrieval gaps with parametric memory — confident wrong answers.
 
-### 4 — Retrieval evaluated separately from generation
+### Retrieval evaluated separately from generation
 
-Root cause analysis requires separating the two components:
-- Retrieval failure → generation always fails
-- Generation failure → retrieval may be correct
+Most RAG tutorials measure end-to-end answer quality. This conflates two different problems:
 
-**Metrics:**
+- **Retrieval failure** → generation always fails
+- **Generation failure** → retrieval may be correct
+
+Separating them identifies which component to fix.
 
 | Metric | Formula | What it measures |
 |---|---|---|
@@ -106,93 +167,43 @@ Root cause analysis requires separating the two components:
 
 Run: `python src/evaluate.py`
 
-### 5 — Response caching (SQLite)
-
-Identical questions return in < 1ms without hitting Groq. TTL = 24 hours.
-Cache is automatically invalidated when `DELETE /store` is called — stale answers
-from old documents are never served after re-indexing.
-
-Hit counts logged per question — analytics show which queries are most repeated.
-
 ---
 
 ## Chunk size experiment results
 
-Run `python src/chunk_experiment.py --doc your_document.txt` to generate:
+`python src/chunk_experiment.py --doc your_document.txt`
 
-| Chunk size | Chunks | Hit @1 | Hit @3 | MRR | Notes |
+| Chunk size | Overlap | Hit @1 | Hit @3 | MRR | Notes |
 |---|---|---|---|---|---|
-| 128 | — | — | — | — | Run experiment |
-| 256 | — | — | — | — | Run experiment |
-| **512** | — | — | — | — | **Expected optimal** |
-| 1024 | — | — | — | — | Run experiment |
+| 128 | 13 | — | — | — | Run experiment |
+| 256 | 26 | — | — | — | Run experiment |
+| **512** | **50** | — | — | — | **Default — expected optimal** |
+| 1024 | 102 | — | — | — | Run experiment |
 
 Results saved to `evaluation/chunk_experiment_results.csv`.
 
 ---
 
-## SQL analytics (query logs)
+## SQL query analytics
 
-`src/query_logger.py` logs every request to SQLite. `GET /analytics` returns:
+Every `/ask` request is logged to SQLite. `GET /analytics` returns:
 
 ```sql
 -- Confidence distribution
-SELECT retrieval_confidence, COUNT(*), ROUND(100.0 * COUNT(*) / total, 2) AS pct
+SELECT retrieval_confidence, COUNT(*),
+       ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM query_logs), 2) AS pct
 FROM query_logs GROUP BY retrieval_confidence;
 
--- Hourly volume with running total (window function)
-SELECT SUBSTR(timestamp,1,13) AS hour, COUNT(*) AS queries,
+-- Hourly query volume with running total (window function)
+SELECT SUBSTR(timestamp,1,13) AS hour,
+       COUNT(*) AS queries,
        SUM(COUNT(*)) OVER (ORDER BY SUBSTR(timestamp,1,13)) AS cumulative
-FROM query_logs GROUP BY hour;
+FROM query_logs GROUP BY hour ORDER BY hour;
 
--- Low confidence questions (candidates for document update)
+-- Low-confidence questions (candidates for document update)
 SELECT question, top_source_distance FROM query_logs
-WHERE retrieval_confidence = 'low' ORDER BY timestamp DESC LIMIT 20;
-```
-
----
-
-## Running locally
-
-**Setup:**
-```bash
-git clone <repo> && cd doc-qa-system
-pip install -r requirements.txt
-export GROQ_API_KEY=your_key   # Free at console.groq.com
-# OR: export USE_OLLAMA=true   # Fully local, no API key needed
-```
-
-**Start API:**
-```bash
-uvicorn api.main:app --port 8001
-```
-
-**Ingest and ask:**
-```bash
-# Ingest a document
-curl -X POST http://localhost:8001/ingest \
-  -H "Content-Type: application/json" \
-  -d '{"file_path": "data/raw/budget_2024.pdf", "reset": true}'
-
-# Ask a question
-curl -X POST http://localhost:8001/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is the total education budget?"}'
-
-# View query analytics
-curl http://localhost:8001/analytics
-```
-
-**Docker:**
-```bash
-docker build -t doc-qa .
-docker run -e GROQ_API_KEY=your_key -p 8001:8001 doc-qa
-```
-
-**Tests and experiment:**
-```bash
-pytest tests/test_api.py -v
-python src/chunk_experiment.py --doc data/raw/your_document.txt
+WHERE retrieval_confidence = 'low'
+ORDER BY timestamp DESC LIMIT 20;
 ```
 
 ---
@@ -201,31 +212,23 @@ python src/chunk_experiment.py --doc data/raw/your_document.txt
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/health` | System status + cache stats |
-| GET | `/store/status` | Vector store document count |
-| POST | `/ingest` | Index a PDF/TXT/MD document |
-| POST | `/ask` | Single question (cached + rate-limited) |
-| POST | `/ask/batch` | Up to 10 questions per request |
-| DELETE | `/store` | Reset index + invalidate cache |
-| GET | `/analytics` | SQL-derived query log analytics |
+| `GET` | `/health` | System status + cache stats |
+| `GET` | `/store/status` | Vector store document count |
+| `POST` | `/ingest` | Index a PDF / TXT / MD document |
+| `POST` | `/ask` | Single question — cached + rate-limited |
+| `POST` | `/ask/batch` | Up to 10 questions per request |
+| `DELETE` | `/store` | Reset index + invalidate cache |
+| `GET` | `/analytics` | SQL-derived query log report |
 
-Rate limit: 30 requests/minute per IP.
-
----
-
-## Where this system fails
-
-1. **Scanned PDFs** — pdfminer extracts digital text only. OCR (pytesseract) needed for image-based documents.
-2. **Chunk boundary answers** — answers spanning more than one overlap window may be incomplete.
-3. **Tables and figures** — PDF tables extract as garbled text. Structured extraction (camelot) not implemented.
-4. **Multi-hop questions** — "What is X, and how does it compare to Y?" requires retrieving chunks about both. Single-query retrieval may miss one.
-5. **English only** — embedding model trained primarily on English. Hindi/code-mixed text degrades retrieval.
-6. **No conversation memory** — each `/ask` call is independent. Follow-up questions have no context.
+Rate limit: **30 requests/minute per IP** (matches Groq free tier).
 
 ---
 
-## Research questions this raises
+## Known limitations
 
-1. Does optimal chunk size change when using a larger embedding model (768-dim vs 384-dim)? A factorial experiment would answer this.
-2. In practice, what fraction of wrong answers are caused by retrieval failure vs generation failure? Separating these on a labelled dataset would guide where to invest improvement effort.
-3. If the document is in English but the question is in Hindi, multilingual embeddings (LaBSE, mE5) could bridge the gap. How much does Hit Rate @3 degrade with language mismatch?
+1. **Scanned PDFs** — pdfminer extracts digital text only. OCR not implemented.
+2. **Chunk boundary answers** — very long answers spanning multiple overlap windows may be incomplete.
+3. **Tables** — PDF tables extract as garbled text. Structured extraction (camelot) not implemented.
+4. **Multi-hop questions** — single-query retrieval may miss answers requiring two separate chunks.
+5. **English only** — degrades on Hindi or code-mixed text.
+6. **No conversation memory** — each `/ask` is stateless.
