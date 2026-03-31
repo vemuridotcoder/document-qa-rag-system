@@ -1,0 +1,10 @@
+data/raw/
+data/chunks/
+data/vectorstore/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.pytest_cache/
+.DS_Store
+evaluation/retrieval_results.json

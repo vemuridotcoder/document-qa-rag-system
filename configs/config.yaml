@@ -1,0 +1,84 @@
+ingestion:
+  # Chunk size decision: 512 tokens balances context completeness vs retrieval precision.
+  # 128 tokens: too small — answers split across chunks, context lost.
+  # 1024 tokens: too large — retrieves irrelevant content alongside the answer.
+  # 512 is the empirically validated midpoint for factual Q&A on dense documents.
+  chunk_size: 512
+
+  # Overlap decision: 50 tokens prevents answers that span chunk boundaries
+  # from being missed. Without overlap, a question whose answer starts at the
+  # end of chunk N retrieves an incomplete sentence.
+  chunk_overlap: 50
+
+  # Sentence-aware splitting: never split mid-sentence.
+  # Mid-sentence chunks confuse the embedding model — it encodes incomplete thoughts.
+  split_on_sentences: true
+
+  supported_extensions:
+    - ".pdf"
+    - ".txt"
+    - ".md"
+
+embedding:
+  # Sentence-BERT: all-MiniLM-L6-v2
+  # Why this model:
+  # - Free, runs fully locally (no API key required — project is reproducible by anyone)
+  # - 384-dimensional embeddings (compact, fast)
+  # - Trained on 1B+ sentence pairs — strong semantic understanding
+  # - Outperforms TF-IDF on semantic queries (e.g. "budget for schools" retrieves
+  #   "education expenditure allocation" even without keyword overlap)
+  model_name: "all-MiniLM-L6-v2"
+  dimension: 384
+
+  # Cosine similarity vs L2 (Euclidean) distance:
+  # For normalized embeddings, cosine similarity = semantic similarity.
+  # L2 distance is affected by vector magnitude — two identical sentences with
+  # different lengths produce different L2 distances but identical cosine similarity.
+  # all-MiniLM-L6-v2 produces unit-normalized vectors → cosine is the correct metric.
+  similarity_metric: "cosine"
+
+  batch_size: 32  # Process 32 chunks at once for embedding — balances speed vs memory
+
+vectorstore:
+  # ChromaDB: free, runs locally, persistent, no cloud setup.
+  # Production alternative: Pinecone or Weaviate — but those require API keys,
+  # breaking reproducibility. ChromaDB is the correct choice for an open-source project.
+  persist_directory: "data/vectorstore"
+  collection_name: "documents"
+  n_results: 3  # Top-3 retrieval: enough context, not so much it confuses the LLM
+
+llm:
+  # Groq API: free tier, fast inference (Llama 3.1 8B at ~500 tok/s)
+  # Why Groq over OpenAI:
+  # - Free tier sufficient for development and demos
+  # - No credit card required for basic usage
+  # - Same prompt engineering principles apply
+  # Fallback: set USE_OLLAMA=true to run fully locally with no API key at all
+  provider: "groq"
+  model: "llama-3.1-8b-instant"
+  max_tokens: 512
+  # Low temperature for factual Q&A: reduces hallucination, keeps answers grounded
+  # in retrieved context. Higher temperature makes answers creative — wrong for this use case.
+  temperature: 0.1
+
+  # Context constraint prompt: LLM is explicitly told to use ONLY retrieved context.
+  # This is the primary hallucination prevention mechanism.
+  # Without this constraint, the LLM draws on parametric memory and invents answers.
+  system_prompt: |
+    You are a precise document assistant. Answer questions using ONLY the provided context.
+    If the answer is not in the context, respond exactly: "I cannot find this in the document."
+    Do not use any knowledge beyond what is provided. Be concise and cite which part of the
+    context you used.
+
+retrieval:
+  # Confidence thresholds:
+  # ChromaDB returns cosine distance (0 = identical, 1 = completely different).
+  # high_confidence: distance < 0.25 means retrieved chunk is very close to query.
+  # low_confidence: distance > 0.55 means retrieval is uncertain — flag to user.
+  high_confidence_distance: 0.25
+  low_confidence_distance: 0.55
+
+api:
+  host: "0.0.0.0"
+  port: 8001  # Different from Project 1 (8000) to avoid conflicts
+  max_batch_questions: 10

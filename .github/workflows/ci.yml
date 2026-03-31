@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          flake8 src/ api/ tests/ --max-line-length=100 --ignore=E501,W503
+
+      - name: Syntax check all Python files
+        run: |
+          for f in src/*.py api/*.py tests/*.py; do
+            python -m py_compile "$f" && echo "OK: $f"
+          done
+
+      - name: Validate config schema
+        run: |
+          python -c "
+          import yaml
+          with open('configs/config.yaml') as f:
+              config = yaml.safe_load(f)
+          required = ['ingestion', 'embedding', 'vectorstore', 'llm', 'retrieval', 'api']
+          for key in required:
+              assert key in config, f'Missing config section: {key}'
+          assert config['ingestion']['chunk_size'] > 0
+          assert config['embedding']['dimension'] == 384
+          print('Config validation passed')
+          "
+
+      - name: Test cache module (no external dependencies)
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, 'src')
+          from cache import init_cache, set_cached, get_cached, get_cache_stats
+          import tempfile, os
+          db = tempfile.mktemp(suffix='.db')
+          init_cache(db)
+          set_cached('test question', 3, {'answer': 'test answer'}, db_path=db)
+          result = get_cached('test question', 3, db_path=db)
+          assert result is not None, 'Cache miss on immediate get'
+          assert result['answer'] == 'test answer', 'Wrong cached value'
+          stats = get_cache_stats(db)
+          assert stats['total_entries'] == 1, 'Wrong entry count'
+          os.unlink(db)
+          print('Cache tests passed')
+          "
+
+      - name: Test query logger (no external dependencies)
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, 'src')
+          from query_logger import init_db
+          import tempfile, os
+          db = tempfile.mktemp(suffix='.db')
+          init_db(db)
+          os.unlink(db)
+          print('Query logger init test passed')
+          "
+
+      - name: Run unit tests
+        run: |
+          pip install pytest
+          pytest tests/ -v -k "not client" --tb=short
