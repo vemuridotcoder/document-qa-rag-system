@@ -19,8 +19,7 @@ slowapi==0.1.9       # Rate limiting middleware
 
 # Utilities
 pyyaml==6.0.1
-numpy==1.26.4
-pandas==2.2.2        # For analytics queries
+numpy==1.26.4       # For analytics queries
 
 # Testing
 pytest==8.2.0
