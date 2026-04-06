@@ -36,7 +36,7 @@ from ingestion import IngestionPipeline
 from embeddings import EmbeddingModel
 from vectorstore import VectorStore
 from generator import AnswerGenerator
-from cache import init_cache, get_cached, set_cached, invalidate_all, get_cache_stats
+from cache import init_cache, get_cached, set_cached, invalidate_all
 from query_logger import init_db, log_query
 from api.schemas import (
     IngestRequest,
@@ -171,7 +171,7 @@ def build_ask_response(question: str, n_chunks: int = 3) -> AskResponse:
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 async def health():
     """System health check. Includes vector store stats, cache stats, and LLM config."""
-    cache_stats = get_cache_stats()
+    
     return HealthResponse(
         status="healthy",
         store_chunks=_vectorstore.count(),

@@ -1,7 +1,7 @@
 """
 schemas.py — Document Q&A API schemas
 """
-
+from typing import Optional
 from pydantic import BaseModel, Field, validator
 from enum import Enum
 
