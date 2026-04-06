@@ -41,7 +41,6 @@ Answer Accuracy (manual):
 import os
 import json
 import logging
-import yaml
 from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
@@ -57,6 +56,7 @@ class TestQuestion:
 
     category: type of question — helps identify which question types fail.
     """
+
     question: str
     ground_truth_answer: str
     ground_truth_keywords: list[str]
@@ -125,8 +125,7 @@ class RetrievalEvaluator:
             # Require at least half the keywords to appear
             # (full keyword matching is too strict for paraphrased documents)
             hits = sum(
-                1 for kw in question.ground_truth_keywords
-                if kw.lower() in text_lower
+                1 for kw in question.ground_truth_keywords if kw.lower() in text_lower
             )
             return hits >= max(1, len(question.ground_truth_keywords) // 2)
 
@@ -209,7 +208,9 @@ class RetrievalEvaluator:
         failures = [r for r in results if not r.hit_at_3]
         for f in failures[:5]:
             print(f"    - {f.question[:70]}...")
-            print(f"      Distance: {f.top_chunk_distance:.3f}, Confidence: {f.retrieval_confidence}")
+            print(
+                f"      Distance: {f.top_chunk_distance:.3f}, Confidence: {f.retrieval_confidence}"
+            )
 
         print("\n" + "=" * 60)
         print("  INTERPRETATION")
@@ -236,20 +237,21 @@ class RetrievalEvaluator:
             "mrr": round(mrr, 4),
             "avg_distance": round(avg_distance, 4),
             "per_category": {
-                cat: round(sum(hits) / len(hits), 4)
-                for cat, hits in categories.items()
-            }
+                cat: round(sum(hits) / len(hits), 4) for cat, hits in categories.items()
+            },
         }
 
         os.makedirs("evaluation", exist_ok=True)
         with open("evaluation/retrieval_results.json", "w") as f:
             json.dump(metrics, f, indent=2)
-        print(f"\n  Results saved to evaluation/retrieval_results.json")
+        print("\n  Results saved to evaluation/retrieval_results.json")
 
         return metrics
 
 
-def load_test_questions(path: str = "evaluation/test_questions.json") -> list[TestQuestion]:
+def load_test_questions(
+    path: str = "evaluation/test_questions.json",
+) -> list[TestQuestion]:
     """Load test questions from JSON file."""
     if not os.path.exists(path):
         logger.warning(f"Test questions not found at {path}. Using sample questions.")
@@ -272,26 +274,28 @@ def get_sample_questions() -> list[TestQuestion]:
             ground_truth_answer="Depends on indexed document",
             ground_truth_keywords=["introduction", "overview", "summary"],
             category="general",
-            difficulty="easy"
+            difficulty="easy",
         ),
         TestQuestion(
             question="What are the key conclusions or findings?",
             ground_truth_answer="Depends on indexed document",
             ground_truth_keywords=["conclusion", "finding", "result"],
             category="summary",
-            difficulty="medium"
+            difficulty="medium",
         ),
         TestQuestion(
             question="What methodology or approach was used?",
             ground_truth_answer="Depends on indexed document",
             ground_truth_keywords=["method", "approach", "procedure"],
             category="methodology",
-            difficulty="medium"
+            difficulty="medium",
         ),
     ]
 
 
-def save_test_questions(questions: list[TestQuestion], path: str = "evaluation/test_questions.json"):
+def save_test_questions(
+    questions: list[TestQuestion], path: str = "evaluation/test_questions.json"
+):
     """Save test questions to JSON for reuse."""
     os.makedirs("evaluation", exist_ok=True)
     with open(path, "w") as f:

@@ -104,23 +104,28 @@ def log_query(db_path: str = DB_PATH):
             top_source_distance = response.sources[0].relevance_distance
 
         conn = sqlite3.connect(db_path)
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO query_logs
                 (timestamp, question, answer_preview, retrieval_confidence,
                  generation_skipped, response_time_ms, top_source_file, top_source_distance)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            datetime.utcnow().isoformat(),
-            response.question,
-            response.answer[:300] if response.answer else None,
-            response.retrieval_confidence.value
-                if hasattr(response.retrieval_confidence, "value")
-                else str(response.retrieval_confidence),
-            int(response.generation_skipped),
-            round(elapsed_ms, 2),
-            top_source_file,
-            top_source_distance,
-        ))
+        """,
+            (
+                datetime.utcnow().isoformat(),
+                response.question,
+                response.answer[:300] if response.answer else None,
+                (
+                    response.retrieval_confidence.value
+                    if hasattr(response.retrieval_confidence, "value")
+                    else str(response.retrieval_confidence)
+                ),
+                int(response.generation_skipped),
+                round(elapsed_ms, 2),
+                top_source_file,
+                top_source_distance,
+            ),
+        )
         conn.commit()
         conn.close()
     except Exception as e:
@@ -142,7 +147,8 @@ def get_analytics(db_path: str = DB_PATH) -> dict:
     analytics = {}
 
     # Total queries and confidence breakdown
-    analytics["summary"] = pd.read_sql_query("""
+    analytics["summary"] = pd.read_sql_query(
+        """
         SELECT
             COUNT(*)                                        AS total_queries,
             ROUND(100.0 * SUM(generation_skipped)
@@ -151,10 +157,13 @@ def get_analytics(db_path: str = DB_PATH) -> dict:
             ROUND(MIN(response_time_ms), 1)                AS min_response_ms,
             ROUND(MAX(response_time_ms), 1)                AS max_response_ms
         FROM query_logs
-    """, conn)
+    """,
+        conn,
+    )
 
     # Confidence distribution
-    analytics["confidence_distribution"] = pd.read_sql_query("""
+    analytics["confidence_distribution"] = pd.read_sql_query(
+        """
         SELECT
             retrieval_confidence,
             COUNT(*)                                        AS count,
@@ -163,10 +172,13 @@ def get_analytics(db_path: str = DB_PATH) -> dict:
         FROM query_logs
         GROUP BY retrieval_confidence
         ORDER BY count DESC
-    """, conn)
+    """,
+        conn,
+    )
 
     # Low confidence queries — candidates for document re-indexing
-    analytics["low_confidence_queries"] = pd.read_sql_query("""
+    analytics["low_confidence_queries"] = pd.read_sql_query(
+        """
         SELECT
             timestamp,
             question,
@@ -176,10 +188,13 @@ def get_analytics(db_path: str = DB_PATH) -> dict:
         WHERE retrieval_confidence = 'low'
         ORDER BY timestamp DESC
         LIMIT 20
-    """, conn)
+    """,
+        conn,
+    )
 
     # Hourly query volume (window function for running total)
-    analytics["hourly_volume"] = pd.read_sql_query("""
+    analytics["hourly_volume"] = pd.read_sql_query(
+        """
         SELECT
             SUBSTR(timestamp, 1, 13)                       AS hour,
             COUNT(*)                                       AS queries,
@@ -188,7 +203,9 @@ def get_analytics(db_path: str = DB_PATH) -> dict:
         FROM query_logs
         GROUP BY hour
         ORDER BY hour
-    """, conn)
+    """,
+        conn,
+    )
 
     conn.close()
     return analytics
@@ -201,9 +218,9 @@ def print_analytics_report(db_path: str = DB_PATH) -> None:
         print("No query logs found.")
         return
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("  QUERY LOG ANALYTICS")
-    print("="*60)
+    print("=" * 60)
     for section, df in analytics.items():
         print(f"\n  {section.replace('_', ' ').title()}:")
         print(df.to_string(index=False))

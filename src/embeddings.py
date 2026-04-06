@@ -21,11 +21,9 @@ This is what makes semantic search possible. The embedding model has
 learned what words *mean*, not just what characters they contain.
 """
 
-import os
 import logging
 import numpy as np
 import yaml
-from typing import Optional
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -72,6 +70,7 @@ class EmbeddingModel:
         if self._model is None:
             try:
                 from sentence_transformers import SentenceTransformer
+
                 logger.info(f"Loading embedding model: {self.model_name}")
                 self._model = SentenceTransformer(self.model_name)
                 logger.info(f"Model loaded. Dimension: {self.dimension}")
@@ -99,8 +98,10 @@ class EmbeddingModel:
 
         if not texts:
             return EmbeddingResult(
-                texts=[], embeddings=np.array([]),
-                model_name=self.model_name, dimension=self.dimension
+                texts=[],
+                embeddings=np.array([]),
+                model_name=self.model_name,
+                dimension=self.dimension,
             )
 
         embeddings = self._model.encode(

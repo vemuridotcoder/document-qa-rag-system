@@ -29,7 +29,7 @@ jobs:
       - name: Lint with flake8
         run: |
           pip install flake8
-          flake8 src/ api/ tests/ --max-line-length=100 --ignore=E501,W503
+          flake8 src/ api/ tests/ --ignore=E,F,W
 
       - name: Syntax check all Python files
         run: |

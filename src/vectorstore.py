@@ -37,6 +37,7 @@ class RetrievalResult:
     distance: cosine distance from query (0 = identical, 1 = opposite)
     confidence: human-readable interpretation of distance
     """
+
     chunk_id: str
     text: str
     source: str
@@ -67,6 +68,7 @@ class VectorStore:
         if self._collection is None:
             try:
                 import chromadb
+
                 client = chromadb.PersistentClient(path=self.persist_dir)
                 self._collection = client.get_or_create_collection(
                     name=self.collection_name,
@@ -74,16 +76,14 @@ class VectorStore:
                         # cosine: correct for normalized sentence-transformer embeddings
                         # l2: wrong here — magnitude variation would distort distances
                         "hnsw:space": "cosine"
-                    }
+                    },
                 )
                 logger.info(
                     f"ChromaDB collection '{self.collection_name}' loaded. "
                     f"Existing documents: {self._collection.count()}"
                 )
             except ImportError:
-                raise ImportError(
-                    "chromadb required. Install: pip install chromadb"
-                )
+                raise ImportError("chromadb required. Install: pip install chromadb")
         return self._collection
 
     def add_chunks(self, chunks: list[DocumentChunk], embeddings: np.ndarray) -> None:
@@ -129,7 +129,9 @@ class VectorStore:
             f"Total in store: {collection.count()}"
         )
 
-    def query(self, query_embedding: np.ndarray, n_results: int = None) -> list[RetrievalResult]:
+    def query(
+        self, query_embedding: np.ndarray, n_results: int = None
+    ) -> list[RetrievalResult]:
         """
         Find the n most semantically similar chunks to a query embedding.
 
@@ -158,15 +160,17 @@ class VectorStore:
             distance = results["distances"][0][i]
             confidence = self._distance_to_confidence(distance)
 
-            retrieval_results.append(RetrievalResult(
-                chunk_id=results["ids"][0][i],
-                text=results["documents"][0][i],
-                source=results["metadatas"][0][i].get("source", "unknown"),
-                chunk_index=results["metadatas"][0][i].get("chunk_index", -1),
-                distance=round(distance, 4),
-                confidence=confidence,
-                metadata=results["metadatas"][0][i],
-            ))
+            retrieval_results.append(
+                RetrievalResult(
+                    chunk_id=results["ids"][0][i],
+                    text=results["documents"][0][i],
+                    source=results["metadatas"][0][i].get("source", "unknown"),
+                    chunk_index=results["metadatas"][0][i].get("chunk_index", -1),
+                    distance=round(distance, 4),
+                    confidence=confidence,
+                    metadata=results["metadatas"][0][i],
+                )
+            )
 
         logger.info(
             f"Retrieved {len(retrieval_results)} chunks. "
@@ -189,6 +193,7 @@ class VectorStore:
         """Reset: delete all indexed data. Useful for re-indexing a document set."""
         try:
             import chromadb
+
             client = chromadb.PersistentClient(path=self.persist_dir)
             client.delete_collection(self.collection_name)
             self._collection = None

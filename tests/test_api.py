@@ -19,7 +19,6 @@ import pytest
 import tempfile
 from fastapi.testclient import TestClient
 
-
 SAMPLE_DOCUMENT = """
 Introduction to Machine Learning
 
@@ -66,6 +65,7 @@ def client():
     """Returns test client. Skips if components fail to load."""
     try:
         from api.main import app
+
         return TestClient(app)
     except Exception as e:
         pytest.skip(f"Could not initialize app: {e}")
@@ -91,10 +91,10 @@ def test_store_status(client):
 
 def test_ingest_document(client, test_doc):
     """Ingest a sample document — store should have chunks afterwards."""
-    response = client.post("/ingest", json={
-        "file_path": test_doc,
-        "reset": True  # Clean slate for test isolation
-    })
+    response = client.post(
+        "/ingest",
+        json={"file_path": test_doc, "reset": True},  # Clean slate for test isolation
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -107,10 +107,9 @@ def test_ask_returns_answer(client, test_doc):
     # Ensure doc is ingested
     client.post("/ingest", json={"file_path": test_doc, "reset": True})
 
-    response = client.post("/ask", json={
-        "question": "What is supervised learning?",
-        "n_chunks": 3
-    })
+    response = client.post(
+        "/ask", json={"question": "What is supervised learning?", "n_chunks": 3}
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["answer"] != ""
@@ -122,7 +121,9 @@ def test_ask_returns_answer(client, test_doc):
 def test_ask_returns_sources(client, test_doc):
     """Each answer must include source chunks with required fields."""
     client.post("/ingest", json={"file_path": test_doc, "reset": True})
-    response = client.post("/ask", json={"question": "What are machine learning applications?"})
+    response = client.post(
+        "/ask", json={"question": "What are machine learning applications?"}
+    )
     assert response.status_code == 200
     data = response.json()
     for source in data["sources"]:
@@ -139,9 +140,9 @@ def test_low_confidence_for_off_topic(client, test_doc):
     and include a warning.
     """
     client.post("/ingest", json={"file_path": test_doc, "reset": True})
-    response = client.post("/ask", json={
-        "question": "What is the exchange rate of USD to INR today?"
-    })
+    response = client.post(
+        "/ask", json={"question": "What is the exchange rate of USD to INR today?"}
+    )
     assert response.status_code == 200
     data = response.json()
     # Off-topic question may return low confidence or skip generation

@@ -33,6 +33,7 @@ class DocumentChunk:
     chunk_index: position in document — helps debug retrieval ordering issues.
     char_count: raw character count — used to validate chunking quality.
     """
+
     chunk_id: str
     text: str
     source: str
@@ -62,7 +63,9 @@ class DocumentLoader:
         elif suffix == ".pdf":
             return self._load_pdf(path)
         else:
-            raise ValueError(f"Unsupported file type: {suffix}. Supported: .txt, .md, .pdf")
+            raise ValueError(
+                f"Unsupported file type: {suffix}. Supported: .txt, .md, .pdf"
+            )
 
     def _load_text(self, path: Path) -> str:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -83,6 +86,7 @@ class DocumentLoader:
         """
         try:
             from pdfminer.high_level import extract_text
+
             text = extract_text(str(path))
             if not text.strip():
                 logger.warning(
@@ -153,19 +157,21 @@ class DocumentChunker:
                 f"{source}:{idx}:{chunk_text[:50]}".encode()
             ).hexdigest()[:16]
 
-            doc_chunks.append(DocumentChunk(
-                chunk_id=chunk_id,
-                text=chunk_text,
-                source=source,
-                chunk_index=idx,
-                char_count=len(chunk_text),
-                metadata={
-                    "source": source,
-                    "chunk_index": idx,
-                    "total_chunks": 0,  # updated after loop
-                    "filename": Path(source).name,
-                }
-            ))
+            doc_chunks.append(
+                DocumentChunk(
+                    chunk_id=chunk_id,
+                    text=chunk_text,
+                    source=source,
+                    chunk_index=idx,
+                    char_count=len(chunk_text),
+                    metadata={
+                        "source": source,
+                        "chunk_index": idx,
+                        "total_chunks": 0,  # updated after loop
+                        "filename": Path(source).name,
+                    },
+                )
+            )
 
         # Update total_chunks now that we know it
         for chunk in doc_chunks:
@@ -209,7 +215,7 @@ class DocumentChunker:
           Acceptable tradeoff for a simpler dependency tree.
         """
         # Split on period/question/exclamation followed by space + capital letter
-        sentence_pattern = r'(?<=[.!?])\s+(?=[A-Z])'
+        sentence_pattern = r"(?<=[.!?])\s+(?=[A-Z])"
         sentences = re.split(sentence_pattern, text)
         # Remove very short fragments (less than 10 chars — likely artefacts)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
@@ -225,7 +231,7 @@ class DocumentChunker:
         chunk_size=512 tokens → 512 * 4 = 2048 characters.
         This is a reasonable approximation without requiring a tokenizer dependency.
         """
-        char_limit = self.chunk_size * 4       # tokens → approximate chars
+        char_limit = self.chunk_size * 4  # tokens → approximate chars
         overlap_chars = self.chunk_overlap * 4
 
         chunks = []

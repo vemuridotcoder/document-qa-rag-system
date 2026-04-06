@@ -81,7 +81,7 @@ def get_cached(
         conn = sqlite3.connect(db_path)
         row = conn.execute(
             "SELECT response_json, expires_at FROM response_cache WHERE cache_key = ?",
-            (key,)
+            (key,),
         ).fetchone()
 
         if row is None:
@@ -100,7 +100,7 @@ def get_cached(
         # Cache hit — increment counter
         conn.execute(
             "UPDATE response_cache SET hit_count = hit_count + 1 WHERE cache_key = ?",
-            (key,)
+            (key,),
         )
         conn.commit()
         conn.close()
@@ -126,11 +126,14 @@ def set_cached(
 
     try:
         conn = sqlite3.connect(db_path)
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR REPLACE INTO response_cache
                 (cache_key, question, response_json, created_at, expires_at, hit_count)
             VALUES (?, ?, ?, ?, ?, 0)
-        """, (key, question, json.dumps(response), now.isoformat(), expires_at))
+        """,
+            (key, question, json.dumps(response), now.isoformat(), expires_at),
+        )
         conn.commit()
         conn.close()
         logger.debug(f"Cached response for: {question[:60]}")

@@ -35,7 +35,6 @@ import json
 import yaml
 import argparse
 import logging
-import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
@@ -108,7 +107,9 @@ def evaluate_chunk_size(
     exp_config["ingestion"]["chunk_overlap"] = overlap
 
     exp_config["vectorstore"] = dict(config["vectorstore"])
-    exp_config["vectorstore"]["persist_directory"] = f"data/vectorstore_exp_{chunk_size}"
+    exp_config["vectorstore"][
+        "persist_directory"
+    ] = f"data/vectorstore_exp_{chunk_size}"
     exp_config["vectorstore"]["collection_name"] = f"exp_{chunk_size}"
 
     # Load and chunk
@@ -174,7 +175,9 @@ def evaluate_chunk_size(
     )
 
 
-def run_experiment(document_path: str, config_path: str = "configs/config.yaml") -> list[ExperimentResult]:
+def run_experiment(
+    document_path: str, config_path: str = "configs/config.yaml"
+) -> list[ExperimentResult]:
     """Run experiment across all chunk sizes. Returns ranked results."""
     with open(config_path) as f:
         config = yaml.safe_load(f)
@@ -186,7 +189,9 @@ def run_experiment(document_path: str, config_path: str = "configs/config.yaml")
 
     for chunk_size in CHUNK_SIZES_TO_TEST:
         logger.info(f"\n--- Chunk size: {chunk_size} tokens ---")
-        result = evaluate_chunk_size(chunk_size, document_path, DEFAULT_TEST_QUESTIONS, config)
+        result = evaluate_chunk_size(
+            chunk_size, document_path, DEFAULT_TEST_QUESTIONS, config
+        )
         results.append(result)
         logger.info(
             f"Hit@1={result.hit_rate_at_1:.2%}, "
@@ -200,12 +205,14 @@ def run_experiment(document_path: str, config_path: str = "configs/config.yaml")
 
 def print_and_save_results(results: list[ExperimentResult]) -> None:
     """Print table and save to CSV/JSON for README."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("  CHUNK SIZE EXPERIMENT RESULTS")
-    print("="*70)
-    print(f"\n  {'Chunk Size':<12} {'Overlap':<10} {'Chunks':<8} "
-          f"{'Avg Chars':<12} {'Hit@1':<8} {'Hit@3':<8} {'MRR':<8}")
-    print("  " + "-"*64)
+    print("=" * 70)
+    print(
+        f"\n  {'Chunk Size':<12} {'Overlap':<10} {'Chunks':<8} "
+        f"{'Avg Chars':<12} {'Hit@1':<8} {'Hit@3':<8} {'MRR':<8}"
+    )
+    print("  " + "-" * 64)
 
     best_hit3 = max(r.hit_rate_at_3 for r in results)
     for r in sorted(results, key=lambda x: x.hit_rate_at_3, reverse=True):
@@ -217,13 +224,19 @@ def print_and_save_results(results: list[ExperimentResult]) -> None:
         )
 
     best = max(results, key=lambda r: r.hit_rate_at_3)
-    print(f"\n  Optimal chunk size: {best.chunk_size} tokens "
-          f"(Hit@3={best.hit_rate_at_3:.2%})")
-    print(f"\n  Interpretation:")
-    print(f"  - Smaller chunks ({min(CHUNK_SIZES_TO_TEST)}) "
-          f"split answers across chunk boundaries → lower Hit@3")
-    print(f"  - Larger chunks ({max(CHUNK_SIZES_TO_TEST)}) "
-          f"mix topics per chunk → retrieves irrelevant context")
+    print(
+        f"\n  Optimal chunk size: {best.chunk_size} tokens "
+        f"(Hit@3={best.hit_rate_at_3:.2%})"
+    )
+    print("\n  Interpretation:")
+    print(
+        f"  - Smaller chunks ({min(CHUNK_SIZES_TO_TEST)}) "
+        f"split answers across chunk boundaries → lower Hit@3"
+    )
+    print(
+        f"  - Larger chunks ({max(CHUNK_SIZES_TO_TEST)}) "
+        f"mix topics per chunk → retrieves irrelevant context"
+    )
     print(f"  - {best.chunk_size} tokens is optimal for this document type")
 
     os.makedirs("evaluation", exist_ok=True)
@@ -232,22 +245,24 @@ def print_and_save_results(results: list[ExperimentResult]) -> None:
 
     summary = {
         "optimal_chunk_size": best.chunk_size,
-        "results": [vars(r) for r in results]
+        "results": [vars(r) for r in results],
     }
     with open("evaluation/chunk_experiment_results.json", "w") as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\n  Results saved to evaluation/chunk_experiment_results.csv")
-    print(f"  Copy Hit@3 column to README results table.")
+    print("\n  Results saved to evaluation/chunk_experiment_results.csv")
+    print("  Copy Hit@3 column to README results table.")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Chunk size experiment for RAG retrieval")
+    parser = argparse.ArgumentParser(
+        description="Chunk size experiment for RAG retrieval"
+    )
     parser.add_argument(
         "--doc",
         type=str,
         default=None,
-        help="Path to document to experiment on (txt, md, or pdf)"
+        help="Path to document to experiment on (txt, md, or pdf)",
     )
     args = parser.parse_args()
 

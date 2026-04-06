@@ -3,7 +3,6 @@ schemas.py — Document Q&A API schemas
 """
 
 from pydantic import BaseModel, Field, validator
-from typing import Optional
 from enum import Enum
 
 
@@ -19,7 +18,7 @@ class IngestRequest(BaseModel):
     reset: bool = Field(
         False,
         description="If True, deletes existing index before ingesting. "
-                    "Use when replacing a document, not adding to collection."
+        "Use when replacing a document, not adding to collection.",
     )
 
 
@@ -33,6 +32,7 @@ class IngestResponse(BaseModel):
 
 class SourceChunk(BaseModel):
     """A retrieved chunk shown to the user for transparency."""
+
     text_preview: str  # First 300 chars
     source_file: str
     chunk_index: int
@@ -41,8 +41,12 @@ class SourceChunk(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: str = Field(..., min_length=3, max_length=500, example="What is the education budget?")
-    n_chunks: Optional[int] = Field(3, ge=1, le=10, description="Number of chunks to retrieve")
+    question: str = Field(
+        ..., min_length=3, max_length=500, example="What is the education budget?"
+    )
+    n_chunks: Optional[int] = Field(
+        3, ge=1, le=10, description="Number of chunks to retrieve"
+    )
 
     @validator("question")
     def question_not_empty(cls, v):

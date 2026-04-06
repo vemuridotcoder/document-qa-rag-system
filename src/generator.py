@@ -39,6 +39,7 @@ class GenerationResult:
     generation_skipped: True if retrieval was too poor to attempt generation
     tokens_used: for monitoring API usage (Groq free tier has limits)
     """
+
     answer: str
     context_used: list[str]
     sources: list[str]
@@ -116,7 +117,9 @@ class AnswerGenerator:
         # Step 2: Build context
         context_parts = []
         for i, chunk in enumerate(retrieved_chunks):
-            source_label = f"[Source {i+1}: {chunk.metadata.get('filename', 'document')}]"
+            source_label = (
+                f"[Source {i+1}: {chunk.metadata.get('filename', 'document')}]"
+            )
             context_parts.append(f"{source_label}\n{chunk.text}")
         context = "\n\n---\n\n".join(context_parts)
 

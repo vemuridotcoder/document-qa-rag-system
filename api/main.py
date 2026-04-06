@@ -37,12 +37,18 @@ from embeddings import EmbeddingModel
 from vectorstore import VectorStore
 from generator import AnswerGenerator
 from cache import init_cache, get_cached, set_cached, invalidate_all, get_cache_stats
-from query_logger import init_db, log_query, print_analytics_report
+from query_logger import init_db, log_query
 from api.schemas import (
-    IngestRequest, IngestResponse,
-    AskRequest, AskResponse, SourceChunk, ConfidenceLevel,
-    BatchAskRequest, BatchAskResponse,
-    StoreStatus, HealthResponse,
+    IngestRequest,
+    IngestResponse,
+    AskRequest,
+    AskResponse,
+    SourceChunk,
+    ConfidenceLevel,
+    BatchAskRequest,
+    BatchAskResponse,
+    StoreStatus,
+    HealthResponse,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -115,6 +121,7 @@ app.add_middleware(
 
 # ── Helper ───────────────────────────────────────────────────────────────────
 
+
 def build_ask_response(question: str, n_chunks: int = 3) -> AskResponse:
     """Core Q&A logic. Used by both /ask and /ask/batch."""
     # Step 1: Embed question
@@ -129,13 +136,16 @@ def build_ask_response(question: str, n_chunks: int = 3) -> AskResponse:
     # Step 4: Build source references for response
     sources = []
     for chunk in retrieved:
-        sources.append(SourceChunk(
-            text_preview=chunk.text[:300] + ("..." if len(chunk.text) > 300 else ""),
-            source_file=chunk.metadata.get("filename", "unknown"),
-            chunk_index=chunk.chunk_index,
-            relevance_distance=chunk.distance,
-            confidence=ConfidenceLevel(chunk.confidence),
-        ))
+        sources.append(
+            SourceChunk(
+                text_preview=chunk.text[:300]
+                + ("..." if len(chunk.text) > 300 else ""),
+                source_file=chunk.metadata.get("filename", "unknown"),
+                chunk_index=chunk.chunk_index,
+                relevance_distance=chunk.distance,
+                confidence=ConfidenceLevel(chunk.confidence),
+            )
+        )
 
     # Step 5: Build warning for low-confidence responses
     warning = None
@@ -156,6 +166,7 @@ def build_ask_response(question: str, n_chunks: int = 3) -> AskResponse:
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 async def health():
@@ -196,8 +207,7 @@ async def ingest_document(request: IngestRequest):
     """
     if not os.path.exists(request.file_path):
         raise HTTPException(
-            status_code=404,
-            detail=f"File not found: {request.file_path}"
+            status_code=404, detail=f"File not found: {request.file_path}"
         )
 
     if request.reset:
@@ -210,7 +220,7 @@ async def ingest_document(request: IngestRequest):
         if not chunks:
             raise HTTPException(
                 status_code=422,
-                detail="Document produced no chunks. Check file content."
+                detail="Document produced no chunks. Check file content.",
             )
 
         # Embed chunks
@@ -228,7 +238,7 @@ async def ingest_document(request: IngestRequest):
             message=(
                 f"Indexed {len(chunks)} chunks from {request.file_path}. "
                 f"Store now contains {_vectorstore.count()} total chunks."
-            )
+            ),
         )
 
     except Exception as e:
@@ -248,8 +258,7 @@ async def ask(request: Request, body: AskRequest):
     """
     if _vectorstore.count() == 0:
         raise HTTPException(
-            status_code=400,
-            detail="No documents indexed. POST to /ingest first."
+            status_code=400, detail="No documents indexed. POST to /ingest first."
         )
 
     # Cache check
@@ -277,12 +286,13 @@ async def ask_batch(request: BatchAskRequest):
     """
     if _vectorstore.count() == 0:
         raise HTTPException(
-            status_code=400,
-            detail="No documents indexed. POST to /ingest first."
+            status_code=400, detail="No documents indexed. POST to /ingest first."
         )
 
     answers = [build_ask_response(q) for q in request.questions]
-    high_conf = sum(1 for a in answers if a.retrieval_confidence == ConfidenceLevel.high)
+    high_conf = sum(
+        1 for a in answers if a.retrieval_confidence == ConfidenceLevel.high
+    )
     low_conf = sum(1 for a in answers if a.retrieval_confidence == ConfidenceLevel.low)
 
     return BatchAskResponse(
@@ -303,7 +313,7 @@ async def reset_store():
     n_cleared = invalidate_all()
     return {
         "status": "success",
-        "message": f"Vector store cleared. {n_cleared} cached responses invalidated."
+        "message": f"Vector store cleared. {n_cleared} cached responses invalidated.",
     }
 
 
@@ -311,11 +321,15 @@ async def reset_store():
 async def analytics():
     """Query log analytics: confidence distribution, response times, low-confidence questions."""
     from query_logger import get_analytics
+
     data = get_analytics()
     return {k: v.to_dict(orient="records") for k, v in data.items()}
 
 
 if __name__ == "__main__":
     import uvicorn
+
     cfg = yaml.safe_load(open("configs/config.yaml"))
-    uvicorn.run("main:app", host=cfg["api"]["host"], port=cfg["api"]["port"], reload=False)
+    uvicorn.run(
+        "main:app", host=cfg["api"]["host"], port=cfg["api"]["port"], reload=False
+    )
