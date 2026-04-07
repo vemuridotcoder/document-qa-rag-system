@@ -11,6 +11,17 @@
 ---
 ## 🚀 Live Demo
 https://document-qa-rag-system-etzp.onrender.com/docs
+## ⚡ How to Use
+
+1. Open API docs:
+   https://document-qa-rag-system-etzp.onrender.com/docs  
+
+2. Use `/ingest`:
+```json
+{
+  "file_path": "test.txt",
+  "reset": true
+}
 ## What it does
 
 | Feature | Detail |
