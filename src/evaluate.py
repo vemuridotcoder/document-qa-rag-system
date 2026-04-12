@@ -42,6 +42,7 @@ import os
 import json
 import logging
 from dataclasses import dataclass, asdict
+from quality import compute_retrieval_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -178,9 +179,14 @@ class RetrievalEvaluator:
             print("No results to report.")
             return {}
 
+        ranks = [
+            (int(round(1 / r.reciprocal_rank)) if r.reciprocal_rank > 0 else None)
+            for r in results
+        ]
+        metrics_obj = compute_retrieval_metrics(ranks, k=3)
         hit_at_1 = sum(r.hit_at_1 for r in results) / len(results)
-        hit_at_3 = sum(r.hit_at_3 for r in results) / len(results)
-        mrr = sum(r.reciprocal_rank for r in results) / len(results)
+        hit_at_3 = metrics_obj.hit_at_k
+        mrr = metrics_obj.mrr
         avg_distance = sum(r.top_chunk_distance for r in results) / len(results)
 
         # Per-category breakdown
