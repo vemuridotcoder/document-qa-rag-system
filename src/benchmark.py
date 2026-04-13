@@ -18,7 +18,11 @@ def benchmark_http(base_url: str, questions: list[str], n_chunks: int = 3) -> di
     for q in questions:
         start = time.perf_counter()
         try:
-            r = requests.post(f"{base_url}/ask", json={"question": q, "n_chunks": n_chunks}, timeout=120)
+            r = requests.post(
+                f"{base_url}/ask",
+                json={"question": q, "n_chunks": n_chunks},
+                timeout=120,
+            )
             r.raise_for_status()
         except Exception:
             errors += 1
@@ -40,12 +44,18 @@ def benchmark_http(base_url: str, questions: list[str], n_chunks: int = 3) -> di
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://localhost:8001")
-    parser.add_argument("--questions-file", default="evaluation/benchmark_questions.json")
+    parser.add_argument(
+        "--questions-file", default="evaluation/benchmark_questions.json"
+    )
     parser.add_argument("--n-chunks", type=int, default=3)
     args = parser.parse_args()
 
     q_path = Path(args.questions_file)
-    questions = json.loads(q_path.read_text()) if q_path.exists() else ["What is this document about?"]
+    questions = (
+        json.loads(q_path.read_text())
+        if q_path.exists()
+        else ["What is this document about?"]
+    )
 
     report = benchmark_http(args.base_url, questions, args.n_chunks)
     Path("evaluation").mkdir(exist_ok=True)

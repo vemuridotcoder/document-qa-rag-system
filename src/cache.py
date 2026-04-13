@@ -46,7 +46,9 @@ class SQLiteCacheBackend(BaseCacheBackend):
             )
         """
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_expires ON response_cache(expires_at)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_expires ON response_cache(expires_at)"
+        )
         conn.commit()
         conn.close()
 
@@ -71,7 +73,10 @@ class SQLiteCacheBackend(BaseCacheBackend):
             conn.close()
             return None
 
-        conn.execute("UPDATE response_cache SET hit_count = hit_count + 1 WHERE cache_key = ?", (key,))
+        conn.execute(
+            "UPDATE response_cache SET hit_count = hit_count + 1 WHERE cache_key = ?",
+            (key,),
+        )
         conn.commit()
         conn.close()
         return json.loads(response_json)
@@ -106,7 +111,9 @@ class SQLiteCacheBackend(BaseCacheBackend):
         if not os.path.exists(self.db_path):
             return {"total_entries": 0, "total_hits": 0, "backend": "sqlite"}
         conn = sqlite3.connect(self.db_path)
-        row = conn.execute("SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM response_cache").fetchone()
+        row = conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM response_cache"
+        ).fetchone()
         conn.close()
         return {"total_entries": row[0], "total_hits": row[1], "backend": "sqlite"}
 
@@ -141,14 +148,14 @@ class RedisCacheBackend(BaseCacheBackend):
 
     def invalidate_all(self) -> int:
         client = self._get_client()
-        keys = list(client.scan_iter("rag:cache:*") )
+        keys = list(client.scan_iter("rag:cache:*"))
         if keys:
             client.delete(*keys)
         return len(keys)
 
     def stats(self) -> dict:
         client = self._get_client()
-        count = sum(1 for _ in client.scan_iter("rag:cache:*") )
+        count = sum(1 for _ in client.scan_iter("rag:cache:*"))
         hits = int(client.get("rag:cache:hits") or 0)
         return {"total_entries": count, "total_hits": hits, "backend": "redis"}
 
@@ -185,7 +192,9 @@ def init_cache(db_path: str = CACHE_DB_PATH) -> None:
     _get_backend()
 
 
-def get_cached(question: str, n_chunks: int, db_path: str = CACHE_DB_PATH) -> dict | None:
+def get_cached(
+    question: str, n_chunks: int, db_path: str = CACHE_DB_PATH
+) -> dict | None:
     _ = db_path
     try:
         return _get_backend().get(question, n_chunks)

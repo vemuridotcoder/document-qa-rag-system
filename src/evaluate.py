@@ -221,7 +221,8 @@ class RetrievalEvaluator:
         print("\n" + "=" * 60)
         print("  INTERPRETATION")
         print("=" * 60)
-        print(f"""
+        print(
+            f"""
   Hit Rate @3 = {hit_at_3:.2%}:
   {"GOOD" if hit_at_3 > 0.7 else "NEEDS IMPROVEMENT"} —
   {"The correct chunk is retrieved in {:.0f}% of queries.".format(hit_at_3 * 100)}
@@ -234,7 +235,8 @@ class RetrievalEvaluator:
   Key insight: Retrieval failures (not generation failures) are the
   primary bottleneck in RAG systems. Improving chunk size, overlap,
   or embedding model will have more impact than changing the LLM.
-        """)
+        """
+        )
 
         metrics = {
             "total_questions": len(results),

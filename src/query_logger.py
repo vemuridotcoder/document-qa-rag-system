@@ -24,7 +24,9 @@ class QueryLogStore:
 
     @property
     def is_postgres(self) -> bool:
-        return self.url.startswith("postgresql://") or self.url.startswith("postgres://")
+        return self.url.startswith("postgresql://") or self.url.startswith(
+            "postgres://"
+        )
 
     def init(self):
         if self.is_postgres:
@@ -48,8 +50,12 @@ class QueryLogStore:
                         )
                         """
                     )
-                    cur.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON query_logs(timestamp)")
-                    cur.execute("CREATE INDEX IF NOT EXISTS idx_confidence ON query_logs(retrieval_confidence)")
+                    cur.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_timestamp ON query_logs(timestamp)"
+                    )
+                    cur.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_confidence ON query_logs(retrieval_confidence)"
+                    )
                 conn.commit()
             return
 
@@ -71,8 +77,12 @@ class QueryLogStore:
             )
             """
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON query_logs(timestamp)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_confidence ON query_logs(retrieval_confidence)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_timestamp ON query_logs(timestamp)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_confidence ON query_logs(retrieval_confidence)"
+        )
         conn.commit()
         conn.close()
 
@@ -143,7 +153,11 @@ class QueryLogStore:
                     """,
                     conn,
                 )
-            return {"summary": summary, "confidence_distribution": conf, "low_confidence_queries": low}
+            return {
+                "summary": summary,
+                "confidence_distribution": conf,
+                "low_confidence_queries": low,
+            }
 
         if not os.path.exists(DB_PATH):
             return {}
@@ -234,7 +248,11 @@ def log_query(db_path: str = DB_PATH):
         datetime.utcnow().isoformat(),
         response.question,
         response.answer[:300] if response.answer else None,
-        response.retrieval_confidence.value if hasattr(response.retrieval_confidence, "value") else str(response.retrieval_confidence),
+        (
+            response.retrieval_confidence.value
+            if hasattr(response.retrieval_confidence, "value")
+            else str(response.retrieval_confidence)
+        ),
         int(response.generation_skipped),
         round(elapsed_ms, 2),
         top_source_file,
@@ -251,15 +269,16 @@ def get_analytics(db_path: str = DB_PATH) -> dict:
     return _STORE.analytics()
 
 
-
 def log_feedback(question: str, rating: str, comment: str | None = None) -> None:
     """Stores explicit user feedback for product quality loops."""
     timestamp = datetime.utcnow().isoformat()
     if _STORE.is_postgres:
         import psycopg
+
         with psycopg.connect(_STORE.url) as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS feedback_logs (
                         id BIGSERIAL PRIMARY KEY,
                         timestamp TEXT NOT NULL,
@@ -267,7 +286,8 @@ def log_feedback(question: str, rating: str, comment: str | None = None) -> None
                         rating TEXT NOT NULL,
                         comment TEXT
                     )
-                """)
+                """
+                )
                 cur.execute(
                     "INSERT INTO feedback_logs (timestamp, question, rating, comment) VALUES (%s, %s, %s, %s)",
                     (timestamp, question, rating, comment),
@@ -276,7 +296,8 @@ def log_feedback(question: str, rating: str, comment: str | None = None) -> None
         return
 
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS feedback_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,
@@ -284,7 +305,8 @@ def log_feedback(question: str, rating: str, comment: str | None = None) -> None
             rating TEXT NOT NULL,
             comment TEXT
         )
-    """)
+    """
+    )
     conn.execute(
         "INSERT INTO feedback_logs (timestamp, question, rating, comment) VALUES (?, ?, ?, ?)",
         (timestamp, question, rating, comment),

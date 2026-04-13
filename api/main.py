@@ -21,7 +21,12 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
 try:
-    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import (
+        Counter,
+        Histogram,
+        generate_latest,
+        CONTENT_TYPE_LATEST,
+    )
 except Exception:  # pragma: no cover
     Counter = Histogram = generate_latest = CONTENT_TYPE_LATEST = None
 
@@ -113,12 +118,16 @@ def init_tracing(app: FastAPI) -> None:
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
         resource = Resource.create({"service.name": "document-qa-rag-api"})
         provider = TracerProvider(resource=resource)
-        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+        provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
+        )
         trace.set_tracer_provider(provider)
         FastAPIInstrumentor.instrument_app(app)
         log.info("OpenTelemetry tracing enabled")
@@ -171,7 +180,9 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         if REQUEST_LATENCY_MS:
             REQUEST_LATENCY_MS.labels(request.method, request.url.path).observe(elapsed)
         if REQUEST_TOTAL:
-            REQUEST_TOTAL.labels(request.method, request.url.path, str(response.status_code)).inc()
+            REQUEST_TOTAL.labels(
+                request.method, request.url.path, str(response.status_code)
+            ).inc()
         log.info(
             "request complete method=%s path=%s status=%s elapsed_ms=%.2f",
             request.method,
@@ -184,9 +195,25 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
-REQUEST_TOTAL = Counter("rag_api_requests_total", "Total API requests", ["method", "path", "status"]) if Counter else None
-REQUEST_LATENCY_MS = Histogram("rag_api_request_latency_ms", "Request latency in milliseconds", ["method", "path"]) if Histogram else None
-RAG_CACHE_HITS = Counter("rag_cache_hits_total", "Response cache hits") if Counter else None
+REQUEST_TOTAL = (
+    Counter(
+        "rag_api_requests_total", "Total API requests", ["method", "path", "status"]
+    )
+    if Counter
+    else None
+)
+REQUEST_LATENCY_MS = (
+    Histogram(
+        "rag_api_request_latency_ms",
+        "Request latency in milliseconds",
+        ["method", "path"],
+    )
+    if Histogram
+    else None
+)
+RAG_CACHE_HITS = (
+    Counter("rag_cache_hits_total", "Response cache hits") if Counter else None
+)
 
 app = FastAPI(
     title="Document Q&A API",
@@ -197,14 +224,19 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(RequestContextMiddleware)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", "-")
     log.exception("unhandled error: %s", exc, extra={"request_id": request_id})
-    return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": request_id},
+    )
 
 
 async def verify_api_key(request: Request):
@@ -215,7 +247,10 @@ async def verify_api_key(request: Request):
     allowed_keys = {k.strip() for k in configured.split(",") if k.strip()}
     incoming = request.headers.get("X-API-Key")
     if incoming not in allowed_keys:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key",
+        )
 
 
 def _embed_question(question: str):
@@ -280,7 +315,9 @@ def build_ask_response(question: str, n_chunks: int = 3) -> AskResponse:
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 async def health():
     cache_stats = get_cache_stats()
-    hit_rate = round(cache_stats["total_hits"] / max(cache_stats["total_entries"], 1), 4)
+    hit_rate = round(
+        cache_stats["total_hits"] / max(cache_stats["total_entries"], 1), 4
+    )
     return HealthResponse(
         status="healthy",
         store_chunks=_vectorstore.count(),
@@ -309,12 +346,18 @@ async def store_status():
 async def ingest_document(request: IngestRequest, raw_request: Request):
     await verify_api_key(raw_request)
     if not os.path.exists(request.file_path):
-        raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+        raise HTTPException(
+            status_code=404, detail=f"File not found: {request.file_path}"
+        )
     try:
         result = _ingest_sync(request.file_path, request.reset)
         return IngestResponse(**result)
     except Exception as exc:
-        log.exception("ingestion failed: %s", exc, extra={"request_id": raw_request.state.request_id})
+        log.exception(
+            "ingestion failed: %s",
+            exc,
+            extra={"request_id": raw_request.state.request_id},
+        )
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {exc}")
 
 
@@ -322,7 +365,9 @@ async def ingest_document(request: IngestRequest, raw_request: Request):
 async def ingest_document_async(request: IngestRequest, raw_request: Request):
     await verify_api_key(raw_request)
     if not os.path.exists(request.file_path):
-        raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+        raise HTTPException(
+            status_code=404, detail=f"File not found: {request.file_path}"
+        )
     job_id = _jobs.submit(_ingest_sync, request.file_path, request.reset)
     return AsyncJobResponse(job_id=job_id, status="queued")
 
@@ -341,7 +386,9 @@ async def get_job_status(job_id: str, request: Request):
 async def ask(request: Request, body: AskRequest):
     await verify_api_key(request)
     if _vectorstore.count() == 0:
-        raise HTTPException(status_code=400, detail="No documents indexed. POST to /ingest first.")
+        raise HTTPException(
+            status_code=400, detail="No documents indexed. POST to /ingest first."
+        )
 
     cached = get_cached(body.question, body.n_chunks)
     if cached is not None:
@@ -363,10 +410,14 @@ async def ask(request: Request, body: AskRequest):
 async def ask_batch(request: BatchAskRequest, raw_request: Request):
     await verify_api_key(raw_request)
     if _vectorstore.count() == 0:
-        raise HTTPException(status_code=400, detail="No documents indexed. POST to /ingest first.")
+        raise HTTPException(
+            status_code=400, detail="No documents indexed. POST to /ingest first."
+        )
 
     answers = [build_ask_response(q) for q in request.questions]
-    high_conf = sum(1 for a in answers if a.retrieval_confidence == ConfidenceLevel.high)
+    high_conf = sum(
+        1 for a in answers if a.retrieval_confidence == ConfidenceLevel.high
+    )
     low_conf = sum(1 for a in answers if a.retrieval_confidence == ConfidenceLevel.low)
 
     return BatchAskResponse(
@@ -382,7 +433,10 @@ async def reset_store(request: Request):
     await verify_api_key(request)
     _vectorstore.delete_collection()
     n_cleared = invalidate_all()
-    return {"status": "success", "message": f"Vector store cleared. {n_cleared} cached responses invalidated."}
+    return {
+        "status": "success",
+        "message": f"Vector store cleared. {n_cleared} cached responses invalidated.",
+    }
 
 
 @app.get("/analytics", tags=["System"])
@@ -412,4 +466,6 @@ if __name__ == "__main__":
     import uvicorn
 
     cfg = yaml.safe_load(open("configs/config.yaml", encoding="utf-8"))
-    uvicorn.run("main:app", host=cfg["api"]["host"], port=cfg["api"]["port"], reload=False)
+    uvicorn.run(
+        "main:app", host=cfg["api"]["host"], port=cfg["api"]["port"], reload=False
+    )

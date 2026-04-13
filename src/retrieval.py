@@ -34,13 +34,17 @@ class HybridRetriever:
     def _hybrid_score(self, query: str, item: Any) -> float:
         dense_similarity = 1.0 - float(item.distance)
         lexical_similarity = self._lexical_score(query, item.text)
-        return (1 - self.lexical_weight) * dense_similarity + self.lexical_weight * lexical_similarity
+        return (
+            1 - self.lexical_weight
+        ) * dense_similarity + self.lexical_weight * lexical_similarity
 
     def rerank(self, query: str, candidates: list[Any], top_k: int) -> list[Any]:
         if not candidates:
             return []
 
-        ranked = [RankedChunk(chunk=c, score=self._hybrid_score(query, c)) for c in candidates]
+        ranked = [
+            RankedChunk(chunk=c, score=self._hybrid_score(query, c)) for c in candidates
+        ]
         ranked.sort(key=lambda x: x.score, reverse=True)
 
         selected: list[RankedChunk] = []
@@ -53,8 +57,13 @@ class HybridRetriever:
             best_idx = 0
             best_mmr = float("-inf")
             for idx, cand in enumerate(remaining):
-                max_redundancy = max(self._lexical_score(cand.chunk.text, s.chunk.text) for s in selected)
-                mmr = self.mmr_lambda * cand.score - (1 - self.mmr_lambda) * max_redundancy
+                max_redundancy = max(
+                    self._lexical_score(cand.chunk.text, s.chunk.text) for s in selected
+                )
+                mmr = (
+                    self.mmr_lambda * cand.score
+                    - (1 - self.mmr_lambda) * max_redundancy
+                )
                 if mmr > best_mmr:
                     best_mmr = mmr
                     best_idx = idx

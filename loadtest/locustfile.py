@@ -6,7 +6,10 @@ class RAGUser(HttpUser):
 
     @task(4)
     def ask(self):
-        self.client.post("/ask", json={"question": "What is the summary of this document?", "n_chunks": 3})
+        self.client.post(
+            "/ask",
+            json={"question": "What is the summary of this document?", "n_chunks": 3},
+        )
 
     @task(1)
     def health(self):

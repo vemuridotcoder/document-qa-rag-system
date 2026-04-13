@@ -13,7 +13,12 @@ def fail(msg: str):
 def _load_gates() -> dict:
     # Avoid heavyweight parsing deps in constrained envs.
     cfg = Path("configs/config.yaml")
-    gates = {"min_hit_at_3": 0.7, "min_mrr": 0.55, "max_p95_ms": 2500, "max_p99_ms": 4000}
+    gates = {
+        "min_hit_at_3": 0.7,
+        "min_mrr": 0.55,
+        "max_p95_ms": 2500,
+        "max_p99_ms": 4000,
+    }
     if not cfg.exists():
         return gates
 

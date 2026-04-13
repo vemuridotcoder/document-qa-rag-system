@@ -17,6 +17,7 @@ Tests cover:
 import os
 import pytest
 import tempfile
+
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 

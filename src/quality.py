@@ -25,8 +25,13 @@ def mean_reciprocal_rank(relevance_ranks: list[int | None]) -> float:
     return sum(rr) / len(rr)
 
 
-def compute_retrieval_metrics(relevance_ranks: list[int | None], k: int = 3) -> RetrievalMetrics:
-    return RetrievalMetrics(hit_at_k=hit_rate_at_k(relevance_ranks, k), mrr=mean_reciprocal_rank(relevance_ranks))
+def compute_retrieval_metrics(
+    relevance_ranks: list[int | None], k: int = 3
+) -> RetrievalMetrics:
+    return RetrievalMetrics(
+        hit_at_k=hit_rate_at_k(relevance_ranks, k),
+        mrr=mean_reciprocal_rank(relevance_ranks),
+    )
 
 
 def percentile(values: list[float], p: float) -> float:

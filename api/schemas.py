@@ -15,7 +15,9 @@ class ConfidenceLevel(str, Enum):
 
 class IngestRequest(BaseModel):
     file_path: str = Field(..., example="data/raw/budget_2024.pdf")
-    reset: bool = Field(False, description="If True, deletes existing index before ingesting.")
+    reset: bool = Field(
+        False, description="If True, deletes existing index before ingesting."
+    )
 
 
 class IngestResponse(BaseModel):
@@ -46,8 +48,12 @@ class SourceChunk(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: str = Field(..., min_length=3, max_length=500, example="What is the education budget?")
-    n_chunks: Optional[int] = Field(3, ge=1, le=10, description="Number of chunks to retrieve")
+    question: str = Field(
+        ..., min_length=3, max_length=500, example="What is the education budget?"
+    )
+    n_chunks: Optional[int] = Field(
+        3, ge=1, le=10, description="Number of chunks to retrieve"
+    )
 
     @field_validator("question")
     @classmethod

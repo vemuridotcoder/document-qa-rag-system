@@ -30,7 +30,9 @@ class AnswerGenerator:
         self.system_prompt = config["llm"]["system_prompt"]
         self.use_ollama = os.environ.get("USE_OLLAMA", "false").lower() == "true"
 
-    def generate(self, question: str, retrieved_chunks: list[RetrievalResult]) -> GenerationResult:
+    def generate(
+        self, question: str, retrieved_chunks: list[RetrievalResult]
+    ) -> GenerationResult:
         if not retrieved_chunks:
             return GenerationResult(
                 answer="No documents have been indexed. Please ingest a document first.",
@@ -53,11 +55,18 @@ class AnswerGenerator:
             )
 
         context = "\n\n---\n\n".join(
-            [f"[Source {i + 1}: {chunk.metadata.get('filename', 'document')}]\n{chunk.text}" for i, chunk in enumerate(retrieved_chunks)]
+            [
+                f"[Source {i + 1}: {chunk.metadata.get('filename', 'document')}]\n{chunk.text}"
+                for i, chunk in enumerate(retrieved_chunks)
+            ]
         )
 
         try:
-            result = self._generate_ollama(question, context) if self.use_ollama else self._generate_groq(question, context)
+            result = (
+                self._generate_ollama(question, context)
+                if self.use_ollama
+                else self._generate_groq(question, context)
+            )
             return GenerationResult(
                 answer=result["answer"],
                 context_used=[c.text for c in retrieved_chunks],
@@ -77,7 +86,9 @@ class AnswerGenerator:
                 used_fallback=True,
             )
 
-    def _extractive_fallback(self, question: str, retrieved_chunks: list[RetrievalResult]) -> str:
+    def _extractive_fallback(
+        self, question: str, retrieved_chunks: list[RetrievalResult]
+    ) -> str:
         """Deterministic fallback: return best-matching sentence from retrieved context."""
         q_terms = set(re.findall(r"[a-zA-Z0-9]+", question.lower()))
         best_sentence = ""
@@ -127,7 +138,10 @@ Cite which source section your answer comes from."""
             max_tokens=self.config["max_tokens"],
             temperature=self.config["temperature"],
         )
-        return {"answer": response.choices[0].message.content.strip(), "tokens_used": response.usage.total_tokens}
+        return {
+            "answer": response.choices[0].message.content.strip(),
+            "tokens_used": response.usage.total_tokens,
+        }
 
     def _generate_ollama(self, question: str, context: str) -> dict:
         import requests
@@ -138,11 +152,16 @@ Cite which source section your answer comes from."""
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": self._build_user_prompt(question, context)},
             ],
-            "options": {"temperature": self.config["temperature"], "num_predict": self.config["max_tokens"]},
+            "options": {
+                "temperature": self.config["temperature"],
+                "num_predict": self.config["max_tokens"],
+            },
             "stream": False,
         }
 
-        response = requests.post("http://localhost:11434/api/chat", json=payload, timeout=60)
+        response = requests.post(
+            "http://localhost:11434/api/chat", json=payload, timeout=60
+        )
         response.raise_for_status()
         data = response.json()
         return {"answer": data["message"]["content"].strip(), "tokens_used": 0}

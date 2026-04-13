@@ -41,7 +41,9 @@ class JobManager:
         client = self._get_redis()
         if client is None:
             return
-        client.hset(f"rag:job:{rec.job_id}", mapping={k: str(v) for k, v in asdict(rec).items()})
+        client.hset(
+            f"rag:job:{rec.job_id}", mapping={k: str(v) for k, v in asdict(rec).items()}
+        )
         client.expire(f"rag:job:{rec.job_id}", 24 * 3600)
 
     def submit(self, fn, *args, **kwargs) -> str:
