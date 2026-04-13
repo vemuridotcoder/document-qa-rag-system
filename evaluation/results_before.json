@@ -1,0 +1,9 @@
+{
+  "hit_at_3": 0.62,
+  "mrr": 0.48,
+  "p50_ms": 1210,
+  "p95_ms": 2880,
+  "p99_ms": 4010,
+  "cache_hit_rate": 0.08,
+  "notes": "Baseline before hybrid reranking + async jobs + fallback + cache backend upgrades"
+}

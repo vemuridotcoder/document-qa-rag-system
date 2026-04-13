@@ -1,30 +1,12 @@
-"""
-cache.py — Document Q&A System
-================================
-SQLite-backed response cache for repeated questions.
+"""Cache abstraction with SQLite fallback and optional Redis backend."""
 
-Why cache:
-- Groq free tier has rate limits (~30 req/min, ~14,400/day).
-  Repeated questions consume quota unnecessarily.
-- Response latency: a cached response returns in < 1ms vs 1-3s for a full RAG pipeline.
-- Identical questions from different users get the same answer deterministically.
+from __future__ import annotations
 
-Cache design decisions:
-- SQLite (not Redis): zero-config, runs locally, no separate process.
-  Production upgrade path: swap SQLite for Redis with minimal code change.
-- Cache key: SHA-256 of (question + n_chunks). Different n_chunks = different context
-  window = potentially different answer. Must be included in the key.
-- TTL: 24 hours. Documents may be re-indexed with updated content.
-  Stale cache after re-indexing would serve outdated answers.
-- Cache invalidation on /store reset: deletes all cached entries when
-  the vector store is cleared (documents changed).
-"""
-
-import os
-import json
-import sqlite3
 import hashlib
+import json
 import logging
+import os
+import sqlite3
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -33,82 +15,191 @@ CACHE_DB_PATH = "data/response_cache.db"
 DEFAULT_TTL_HOURS = 24
 
 
-def init_cache(db_path: str = CACHE_DB_PATH) -> None:
-    """Create cache table. Called on application startup."""
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS response_cache (
-            cache_key   TEXT PRIMARY KEY,
-            question    TEXT NOT NULL,
-            response_json TEXT NOT NULL,
-            created_at  TEXT NOT NULL,
-            expires_at  TEXT NOT NULL,
-            hit_count   INTEGER DEFAULT 0
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_expires ON response_cache(expires_at)")
-    conn.commit()
-    conn.close()
-
-
 def _make_key(question: str, n_chunks: int) -> str:
-    """
-    Deterministic cache key from question + retrieval parameters.
-    SHA-256 ensures fixed-length key regardless of question length.
-    """
     payload = f"{question.strip().lower()}::{n_chunks}"
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def get_cached(
-    question: str,
-    n_chunks: int,
-    db_path: str = CACHE_DB_PATH,
-) -> dict | None:
-    """
-    Return cached response if it exists and has not expired.
-    Returns None on cache miss or expiry.
-    Increments hit_count for analytics.
-    """
-    if not os.path.exists(db_path):
-        return None
+class BaseCacheBackend:
+    def get(self, question: str, n_chunks: int) -> dict | None: ...
+    def set(self, question: str, n_chunks: int, response: dict, ttl_hours: int): ...
+    def invalidate_all(self) -> int: ...
+    def stats(self) -> dict: ...
 
-    key = _make_key(question, n_chunks)
-    now = datetime.utcnow().isoformat()
 
-    try:
-        conn = sqlite3.connect(db_path)
+class SQLiteCacheBackend(BaseCacheBackend):
+    def __init__(self, db_path: str = CACHE_DB_PATH):
+        self.db_path = db_path
+        os.makedirs("data", exist_ok=True)
+
+    def init(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS response_cache (
+                cache_key   TEXT PRIMARY KEY,
+                question    TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                expires_at  TEXT NOT NULL,
+                hit_count   INTEGER DEFAULT 0
+            )
+        """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_expires ON response_cache(expires_at)"
+        )
+        conn.commit()
+        conn.close()
+
+    def get(self, question: str, n_chunks: int) -> dict | None:
+        if not os.path.exists(self.db_path):
+            return None
+        key = _make_key(question, n_chunks)
+        now = datetime.utcnow().isoformat()
+        conn = sqlite3.connect(self.db_path)
         row = conn.execute(
             "SELECT response_json, expires_at FROM response_cache WHERE cache_key = ?",
             (key,),
         ).fetchone()
-
         if row is None:
             conn.close()
             return None
 
         response_json, expires_at = row
         if expires_at < now:
-            # Expired — delete and return miss
             conn.execute("DELETE FROM response_cache WHERE cache_key = ?", (key,))
             conn.commit()
             conn.close()
-            logger.debug(f"Cache expired for: {question[:50]}")
             return None
 
-        # Cache hit — increment counter
         conn.execute(
             "UPDATE response_cache SET hit_count = hit_count + 1 WHERE cache_key = ?",
             (key,),
         )
         conn.commit()
         conn.close()
-        logger.info(f"Cache HIT: {question[:60]}")
         return json.loads(response_json)
 
+    def set(self, question: str, n_chunks: int, response: dict, ttl_hours: int):
+        key = _make_key(question, n_chunks)
+        now = datetime.utcnow()
+        expires_at = (now + timedelta(hours=ttl_hours)).isoformat()
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO response_cache
+                (cache_key, question, response_json, created_at, expires_at, hit_count)
+            VALUES (?, ?, ?, ?, ?, 0)
+            """,
+            (key, question, json.dumps(response), now.isoformat(), expires_at),
+        )
+        conn.commit()
+        conn.close()
+
+    def invalidate_all(self) -> int:
+        if not os.path.exists(self.db_path):
+            return 0
+        conn = sqlite3.connect(self.db_path)
+        n = conn.execute("SELECT COUNT(*) FROM response_cache").fetchone()[0]
+        conn.execute("DELETE FROM response_cache")
+        conn.commit()
+        conn.close()
+        return n
+
+    def stats(self) -> dict:
+        if not os.path.exists(self.db_path):
+            return {"total_entries": 0, "total_hits": 0, "backend": "sqlite"}
+        conn = sqlite3.connect(self.db_path)
+        row = conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM response_cache"
+        ).fetchone()
+        conn.close()
+        return {"total_entries": row[0], "total_hits": row[1], "backend": "sqlite"}
+
+
+class RedisCacheBackend(BaseCacheBackend):
+    def __init__(self, redis_url: str):
+        self.redis_url = redis_url
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            import redis
+
+            self._client = redis.from_url(self.redis_url, decode_responses=True)
+        return self._client
+
+    def init(self):
+        self._get_client().ping()
+
+    def get(self, question: str, n_chunks: int) -> dict | None:
+        key = f"rag:cache:{_make_key(question, n_chunks)}"
+        client = self._get_client()
+        data = client.get(key)
+        if not data:
+            return None
+        client.incr("rag:cache:hits")
+        return json.loads(data)
+
+    def set(self, question: str, n_chunks: int, response: dict, ttl_hours: int):
+        key = f"rag:cache:{_make_key(question, n_chunks)}"
+        self._get_client().setex(key, int(ttl_hours * 3600), json.dumps(response))
+
+    def invalidate_all(self) -> int:
+        client = self._get_client()
+        keys = list(client.scan_iter("rag:cache:*"))
+        if keys:
+            client.delete(*keys)
+        return len(keys)
+
+    def stats(self) -> dict:
+        client = self._get_client()
+        count = sum(1 for _ in client.scan_iter("rag:cache:*"))
+        hits = int(client.get("rag:cache:hits") or 0)
+        return {"total_entries": count, "total_hits": hits, "backend": "redis"}
+
+
+_backend: BaseCacheBackend | None = None
+
+
+def _get_backend() -> BaseCacheBackend:
+    global _backend
+    if _backend is not None:
+        return _backend
+
+    backend = os.getenv("CACHE_BACKEND", "sqlite").lower().strip()
+    if backend == "redis":
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        try:
+            b = RedisCacheBackend(redis_url)
+            b.init()
+            _backend = b
+            logger.info("Using Redis cache backend")
+            return _backend
+        except Exception as exc:
+            logger.warning("Redis cache unavailable (%s); falling back to SQLite", exc)
+
+    b = SQLiteCacheBackend(CACHE_DB_PATH)
+    b.init()
+    _backend = b
+    logger.info("Using SQLite cache backend")
+    return _backend
+
+
+def init_cache(db_path: str = CACHE_DB_PATH) -> None:
+    _ = db_path
+    _get_backend()
+
+
+def get_cached(
+    question: str, n_chunks: int, db_path: str = CACHE_DB_PATH
+) -> dict | None:
+    _ = db_path
+    try:
+        return _get_backend().get(question, n_chunks)
     except Exception as e:
-        logger.error(f"Cache read failed: {e}")
+        logger.error("Cache read failed: %s", e)
         return None
 
 
@@ -119,52 +210,25 @@ def set_cached(
     ttl_hours: int = DEFAULT_TTL_HOURS,
     db_path: str = CACHE_DB_PATH,
 ) -> None:
-    """Store a response in the cache with TTL expiry."""
-    key = _make_key(question, n_chunks)
-    now = datetime.utcnow()
-    expires_at = (now + timedelta(hours=ttl_hours)).isoformat()
-
+    _ = db_path
     try:
-        conn = sqlite3.connect(db_path)
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO response_cache
-                (cache_key, question, response_json, created_at, expires_at, hit_count)
-            VALUES (?, ?, ?, ?, ?, 0)
-        """,
-            (key, question, json.dumps(response), now.isoformat(), expires_at),
-        )
-        conn.commit()
-        conn.close()
-        logger.debug(f"Cached response for: {question[:60]}")
+        _get_backend().set(question, n_chunks, response, ttl_hours)
     except Exception as e:
-        logger.error(f"Cache write failed: {e}")
+        logger.error("Cache write failed: %s", e)
 
 
 def invalidate_all(db_path: str = CACHE_DB_PATH) -> int:
-    """
-    Delete all cached responses.
-    Called when /store is reset — cached answers based on old documents
-    are no longer valid after re-indexing.
-    """
-    if not os.path.exists(db_path):
+    _ = db_path
+    try:
+        return _get_backend().invalidate_all()
+    except Exception as e:
+        logger.error("Cache invalidation failed: %s", e)
         return 0
-    conn = sqlite3.connect(db_path)
-    n = conn.execute("SELECT COUNT(*) FROM response_cache").fetchone()[0]
-    conn.execute("DELETE FROM response_cache")
-    conn.commit()
-    conn.close()
-    logger.info(f"Cache invalidated: {n} entries cleared")
-    return n
 
 
 def get_cache_stats(db_path: str = CACHE_DB_PATH) -> dict:
-    """Return cache statistics for the /health endpoint."""
-    if not os.path.exists(db_path):
-        return {"total_entries": 0, "total_hits": 0}
-    conn = sqlite3.connect(db_path)
-    row = conn.execute(
-        "SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM response_cache"
-    ).fetchone()
-    conn.close()
-    return {"total_entries": row[0], "total_hits": row[1]}
+    _ = db_path
+    try:
+        return _get_backend().stats()
+    except Exception:
+        return {"total_entries": 0, "total_hits": 0, "backend": "unknown"}

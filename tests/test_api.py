@@ -17,6 +17,8 @@ Tests cover:
 import os
 import pytest
 import tempfile
+
+pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 SAMPLE_DOCUMENT = """
@@ -205,3 +207,14 @@ def test_store_reset(client, test_doc):
     # Verify store is empty
     status = client.get("/store/status").json()
     assert status["total_chunks"] == 0
+
+
+def test_async_ingest_job(client, test_doc):
+    response = client.post("/ingest/async", json={"file_path": test_doc, "reset": True})
+    assert response.status_code == 200
+    payload = response.json()
+    assert "job_id" in payload
+
+    job = client.get(f"/jobs/{payload['job_id']}")
+    assert job.status_code == 200
+    assert job.json()["status"] in ["queued", "running", "completed"]
